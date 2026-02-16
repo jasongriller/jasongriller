@@ -204,3 +204,18 @@ Here are some ideas to get you started:
   changelog section.
 
   Can you tell me (or screenshot) what's in the docs/ folder? That'll tell me whether we need AI summarization or can just pull the docs as-is.
+
+
+
+  ● That's the only functional issue I found. Everything else checks out:
+
+  - All env vars wired correctly end-to-end                                                                                                                                                                               - IAM shared role covers every AWS action the Lambda needs
+  - All npm dependencies present                                                                                                                                                                                        
+  - Terraform paths are correct
+  - EventBridge cron syntax is valid
+  - deploy.sh won't delete the S3 doc (no --delete flag)
+  - S3 metadata keys for change detection are consistent
+  - Branch names with slashes (releases/aie/current) work fine with isomorphic-git
+
+  One thing you'll want to confirm after deploy: that the existing ADO PAT has read access to the AIE/_git/AIE code repo (not just AIE/_git/AIE.wiki). If it's scoped to the org it should, but if it was created       
+  specifically for wiki access it might not. You'd see a git clone auth error in CloudWatch logs if not.
