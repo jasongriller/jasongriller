@@ -17,112 +17,159 @@ Here are some ideas to get you started:
 
 
 
+ That matches the existing wiki URL pattern (https://gps-aie-devops@dev.azure.com/gps-aie-devops/AIE/_git/AIE.wiki) — just .wiki vs no .wiki suffix. We're good.
 
-Got all the details. Let me think through this end-to-end.
+● User approved Claude's plan   
+  ⎿  Plan saved to: ~\.claude\plans\sunny-dancing-abelson.md · /plan to edit
+     Plan: Auto-Generated AIE Process Document (repo-digest Lambda)                                                                                                                                                        
+     Context                                                                                                                                                                                                            
+  
+     The user wants the AI to have distilled knowledge about how the AIE team works — BA processes, QA workflows, release pipelines — without raw files cluttering the KB. A new scheduled Lambda will clone the
+     AIE code repo (not the wiki), read process-relevant files, use Bedrock to generate a structured summary, and save it as a curated KB document that auto-updates daily.
 
-  ---
-  The Architecture
+     Key constraint: No new KB tab. The generated doc lives under knowledge-base-docs/context/ in the existing Curated tab.
 
-  Here's what I'm thinking — a new repo-digest Lambda that runs on a daily schedule:
+     ---
+     Files to Create (5)
 
-  EventBridge (daily cron)
-    │
-    ▼
-  repo-digest Lambda
-    │
-    ├─ 1. Fetch ADO creds from Secrets Manager (same secret, already exists)
-    ├─ 2. Shallow-clone AIE CODE repo (AIE/_git/AIE, not AIE.wiki)
-    ├─ 3. Check: has anything changed since last run?
-    │      └─ Compare HEAD commit hash vs. hash stored on the existing S3 doc's metadata
-    │      └─ If same → exit early, no work needed
-    ├─ 4. Read only process-relevant files:
-    │      └─ docs/**, pipelines/**, release-definitions/**, data-dictionary/**
-    ├─ 5. Get git log (last 30 days) for "Recent Changes" section
-    ├─ 6. Feed everything to Bedrock (ConverseCommand, Nova Pro) with a prompt like:
-    │      "Given these repo files, generate a structured summary of the team's
-    │       processes and workflows — release process, CI/CD, BA workflow, QA workflow..."
-    ├─ 7. Save generated markdown to S3:
-    │      └─ knowledge-base-docs/context/aie-team-processes.md
-    │      └─ metadata: { status: 'active', last-commit-hash: 'abc123' }
-    ├─ 8. Trigger Bedrock ingestion (curated data source)
-    └─ Done
+     1. lambdas/repo-digest/package.json
+
+     Dependencies: isomorphic-git, @aws-sdk/client-s3, @aws-sdk/client-secrets-manager, @aws-sdk/client-bedrock-runtime, @aws-sdk/client-bedrock-agent
+
+     2. lambdas/repo-digest/src/index.js (~250-300 lines)
+
+     Handler flow:
+     1. Get ADO credentials from Secrets Manager (reuse exact pattern from lambdas/wiki-sync/src/index.js lines 103-117)
+     2. Shallow-clone AIE code repo to /tmp/aie-repo using isomorphic-git (reuse pattern from wiki-sync lines 122-175, but with ADO_REPO_URL env var and ADO_REPO_BRANCH for checkout — defaults to
+     releases/aie/current)
+     3. Get HEAD commit hash via git.resolveRef({ ref: 'HEAD' })
+     4. Check existing doc metadata — HeadObjectCommand on knowledge-base-docs/context/aie-team-processes.md to read last-commit-hash from S3 metadata. If same as HEAD → exit early (no changes)
+     5. Read relevant files — walk docs/, pipelines/, release-definitions/, data-dictionary/ collecting .md, .yml, .yaml, .json, .txt files
+     6. Get git log — git.log({ depth: 50 }) for recent commits, formatted as "date — author — message"
+     7. Build Bedrock prompt — System prompt explains the task; user message contains file contents + git log. Includes token budget guard (~200K char limit, prioritize docs/ if over budget)
+     8. Call Bedrock ConverseCommand — Same pattern as lambdas/generate/src/index.js line 851: BedrockRuntimeClient + ConverseCommand with system, messages, inferenceConfig
+     9. Save to S3 — PutObjectCommand to knowledge-base-docs/context/aie-team-processes.md with metadata { status: 'active', 'last-commit-hash': hash, 'generated-at': timestamp, 'source': 'repo-digest' }
+     10. Trigger Bedrock ingestion — StartIngestionJobCommand with curated data source ID (same pattern as wiki-sync lines 332-355)
+
+     Bedrock summarization prompt:
+
+     System: You are an expert technical writer. Given source files from a software repository,
+     generate a structured process document that describes how the team operates. Focus on:
+     - Release and deployment processes
+     - CI/CD pipeline stages and gates
+     - BA (Business Analyst) workflows and conventions
+     - QA processes and test strategies
+     - Development workflow (branching, PR process, code review)
+     - Data model and dictionary overview
+     Include a "Recent Changes" section at the end summarizing recent commits.
+     Output clean, readable markdown with clear section headers.
 
 
-  Why This Works
+     3. terraform/modules/repo-digest/main.tf
 
-  No new tab — the generated doc lands in knowledge-base-docs/context/, which is the existing Curated tab. It'll show up alongside your other curated docs like any other document.
+     Follow exact wiki-sync pattern:
+     - null_resource for npm install --production (triggered by filemd5 on package.json + index.js)
+     - archive_file for zipping
+     - aws_lambda_function — runtime nodejs20.x, timeout 300s, memory 1024MB, ephemeral storage 2048MB (smaller than wiki-sync — we only read select folders, not 10GB)
+     - aws_cloudwatch_log_group — 7 day retention
+     - aws_cloudwatch_event_rule — cron(30 0 * * ? *) (daily at 00:30 UTC, 30 min after analytics cron)
+     - aws_cloudwatch_event_target → Lambda
+     - aws_lambda_permission for EventBridge
 
-  No raw files — Bedrock distills the pipeline YAML, release definitions, and docs into readable prose about how the team works.
+     Env vars: ADO_REPO_URL, ADO_REPO_BRANCH, S3_BUCKET_NAME, KNOWLEDGE_BASE_ID, DATA_SOURCE_ID (curated), ADO_SECRET_ARN, BEDROCK_MODEL_ID
 
-  Auto-updates — runs daily. If nothing changed in the AIE repo (same commit hash), it skips entirely. Zero wasted Bedrock calls.
+     4. terraform/modules/repo-digest/variables.tf
 
-  Existing permissions cover everything:
+     Variables: function_name, resource_prefix, lambda_role_arn, ado_repo_url, ado_repo_branch, s3_bucket_name, knowledge_base_id, data_source_id, ado_secret_arn, bedrock_model_id, aws_region, tags
 
-  ┌───────────────────────────────────┬──────────────────────────────────────────────────┐
-  │               Need                │                 Already have it?                 │
-  ├───────────────────────────────────┼──────────────────────────────────────────────────┤
-  │ ADO credentials (Secrets Manager) │ Yes — same secret used by wiki-sync              │
-  ├───────────────────────────────────┼──────────────────────────────────────────────────┤
-  │ Git clone (isomorphic-git)        │ Yes — same pattern                               │
-  ├───────────────────────────────────┼──────────────────────────────────────────────────┤
-  │ Bedrock ConverseCommand           │ Yes — shared IAM role has bedrock:InvokeModel    │
-  ├───────────────────────────────────┼──────────────────────────────────────────────────┤
-  │ S3 write to knowledge-base-docs/  │ Yes — shared role has full bucket access         │
-  ├───────────────────────────────────┼──────────────────────────────────────────────────┤
-  │ Bedrock ingestion trigger         │ Yes — StartIngestionJobCommand permission exists │
-  └───────────────────────────────────┴──────────────────────────────────────────────────┘
+     5. terraform/modules/repo-digest/outputs.tf
 
-  Cost: ~$1-2/month. One Bedrock call per day (skipped if no changes), tiny Lambda runtime.
+     Outputs: function_name, function_arn
 
-  What the Generated Doc Would Look Like
+     ---
+     Files to Modify (2)
 
-  # AIE Team Processes & Workflow
-  *Auto-generated from AIE repository — Last updated: 2026-02-16 — Commit: d88cdb0*
+     6. terraform/variables.tf
 
-  ## Release Process
-  [Distilled from release-definitions/ — how releases are cut, environments, approvals]
+     Add two new variables:
+     variable "ado_repo_url" {
+       description = "ADO code repository Git URL"
+       type        = string
+       default     = "https://gps-aie-devops@dev.azure.com/gps-aie-devops/AIE/_git/AIE"
+     }
 
-  ## CI/CD Pipeline
-  [Distilled from pipelines/ — build stages, deployment gates, environments]
+     variable "ado_repo_branch" {
+       description = "Branch to clone from the AIE code repository"
+       type        = string
+       default     = "releases/aie/current"
+     }
 
-  ## Development Workflow
-  [Distilled from docs/ — branching strategy, PR process, code review]
+     7. terraform/main.tf
 
-  ## Data Dictionary
-  [Distilled from data-dictionary/ — key entities, relationships, field definitions]
+     Add new module block after wiki_sync (around line 320):
+     module "repo_digest" {
+       source = "./modules/repo-digest"
 
-  ## QA Process
-  [Extracted from docs and pipeline stages — test gates, automation, sign-off]
+       function_name     = "${local.resource_prefix}-repo-digest"
+       resource_prefix   = local.resource_prefix
+       lambda_role_arn   = module.iam.lambda_role_arn
+       ado_repo_url      = var.ado_repo_url
+       ado_repo_branch   = var.ado_repo_branch
+       s3_bucket_name    = module.s3.bucket_name
+       knowledge_base_id = module.bedrock.knowledge_base_id
+       data_source_id    = module.bedrock.data_source_id      # CURATED data source
+       ado_secret_arn    = aws_secretsmanager_secret.ado_credentials.arn
+       bedrock_model_id  = var.bedrock_model_id
+       aws_region        = var.aws_region
+       tags              = local.common_tags
 
-  ## BA Process
-  [Extracted from docs — requirements gathering, story writing conventions]
+       depends_on = [
+         module.bedrock,
+         module.s3,
+         aws_secretsmanager_secret_version.ado_credentials
+       ]
+     }
 
-  ## Recent Changes (Last 30 Days)
-  - 2026-02-16 — @salman — Updated release pipeline for staging gate
-  - 2026-02-14 — @john — Added QA checklist to docs
-  - ...
+     ---
+     Key Design Decisions
 
-  Implementation Pieces
+     ┌────────────────────────────────┬───────────────────────────────────────────────────┬──────────────────────────────────────────────────────────────────────────────────────┐
+     │            Decision            │                      Choice                       │                                         Why                                          │
+     ├────────────────────────────────┼───────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────┤
+     │ New Lambda vs extend wiki-sync │ New Lambda                                        │ Different concern (summarize vs sync), cleaner separation, independent failure       │
+     ├────────────────────────────────┼───────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────┤
+     │ IAM role                       │ Shared role (module.iam)                          │ Already has bedrock:InvokeModel, S3 read/write, SecretsManager, bedrock ingestion    │
+     ├────────────────────────────────┼───────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────┤
+     │ Lambda Layer                   │ Not used                                          │ Follows wiki-sync pattern; only needs S3 + Bedrock + SecretsManager + isomorphic-git │
+     ├────────────────────────────────┼───────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────┤
+     │ Change detection               │ S3 object metadata (last-commit-hash)             │ No new DynamoDB table needed                                                         │
+     ├────────────────────────────────┼───────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────┤
+     │ S3 path                        │ knowledge-base-docs/context/aie-team-processes.md │ Lands in existing Curated tab, alongside other context docs                          │
+     ├────────────────────────────────┼───────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────┤
+     │ Schedule                       │ Daily (00:30 UTC)                                 │ Staggered 30 min after analytics cron to avoid overlapping                           │
+     ├────────────────────────────────┼───────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────┤
+     │ deploy.sh safe?                │ Yes                                               │ Uses s3 sync without --delete, won't remove S3-only docs                             │
+     ├────────────────────────────────┼───────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────┤
+     │ Bedrock data source            │ Uses existing curated data source                 │ Doc goes under knowledge-base-docs/ prefix, already covered                          │
+     └────────────────────────────────┴───────────────────────────────────────────────────┴──────────────────────────────────────────────────────────────────────────────────────┘
 
-  ┌─────────────────────┬────────────────────────────────────────────────────────────────────┐
-  │        Piece        │                               Where                                │
-  ├─────────────────────┼────────────────────────────────────────────────────────────────────┤
-  │ Lambda code         │ lambdas/repo-digest/src/index.js (~200-300 lines)                  │
-  ├─────────────────────┼────────────────────────────────────────────────────────────────────┤
-  │ Terraform module    │ terraform/modules/repo-digest/main.tf                              │
-  ├─────────────────────┼────────────────────────────────────────────────────────────────────┤
-  │ Module wiring       │ New block in terraform/main.tf                                     │
-  ├─────────────────────┼────────────────────────────────────────────────────────────────────┤
-  │ EventBridge rule    │ cron(35 0 * * ? *) (daily, 30 min after analytics cron to stagger) │
-  ├─────────────────────┼────────────────────────────────────────────────────────────────────┤
-  │ Bedrock data source │ None needed — doc goes into existing knowledge-base-docs/ prefix   │
-  ├─────────────────────┼────────────────────────────────────────────────────────────────────┤
-  │ New IAM role        │ None needed — shared role covers everything                        │
-  ├─────────────────────┼────────────────────────────────────────────────────────────────────┤
-  │ New DynamoDB table  │ None needed — commit hash stored as S3 object metadata             │
-  └─────────────────────┴────────────────────────────────────────────────────────────────────┘
+     What Won't Change
 
-  One Question
+     - No frontend changes (doc appears in Curated tab automatically)
+     - No new DynamoDB tables
+     - No new Bedrock data sources
+     - No API Gateway changes (Lambda is EventBridge-triggered only)
+     - No changes to existing Lambdas
 
-  The ADO PAT currently used for wiki-sync — does it have read access to the code repo (AIE/_git/AIE) too, or just the wiki repo (AIE/_git/AIE.wiki)? They're separate Git repos in ADO. If the PAT is org-scoped it    
-  probably covers both, but worth confirming before we build this.
+     ---
+     Verification
+
+     1. Local check: npm install --production in lambdas/repo-digest/ succeeds
+     2. Terraform: terraform validate and terraform plan in terraform/ — should show new Lambda + EventBridge resources
+     3. After deploy: Manually invoke the Lambda via AWS Console or CLI to test:
+     aws lambda invoke --function-name army-story-gen-dev-repo-digest --region us-gov-west-1 out.json
+     4. Verify S3: Check knowledge-base-docs/context/aie-team-processes.md exists in the S3 bucket
+     5. Verify KB: Go to Knowledge Base UI → Curated tab → context section → confirm doc appears
+     6. Verify RAG: Generate a story and check if the AI references AIE team processes in its output
+
+● Let's go. I'll set up tasks and start building.  
