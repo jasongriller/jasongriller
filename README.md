@@ -173,3 +173,34 @@ Here are some ideas to get you started:
      6. Verify RAG: Generate a story and check if the AI references AIE team processes in its output
 
 ● Let's go. I'll set up tasks and start building.  
+
+
+
+
+  You don't want raw files. You don't want a new tab. You want the AI to have distilled knowledge about how the AIE team works, and for that knowledge to stay current.
+
+  What I'd Propose: Auto-Generated Curated Doc(s)
+
+  A scheduled Lambda that:
+
+  1. Clones the AIE code repo (same as wiki-sync pattern)
+  2. Reads the relevant files — docs/, pipelines/, release-definitions/, data-dictionary/
+  3. Uses Bedrock to generate a structured summary — not the raw files, but a human-readable digest like:
+    - How the release process works (from pipeline/release-definition files)
+    - BA and QA workflows (from docs/)
+    - Data model overview (from data-dictionary/)
+    - Recent changes — what's been modified, by whom, when (from git log)
+  4. Saves it as a curated KB doc under knowledge-base-docs/context/ — shows up in your existing Curated tab, no new tab
+  5. Triggers Bedrock ingestion so the AI can reference it during generation
+  6. Runs on same 24h schedule — if nothing changed in the repo, doc stays the same
+
+  This way:
+  - It lives alongside your other curated docs
+  - The AI naturally references AIE team processes when generating stories
+  - It stays current without anyone manually updating it
+  - No code/YAML polluting your KB — just the distilled "here's how we work" knowledge
+
+  One thing I can't see — what's actually in the docs/ folder of that repo. If it already has well-written process docs, we might not even need Bedrock to summarize — we could just pull those docs directly and add a 
+  changelog section.
+
+  Can you tell me (or screenshot) what's in the docs/ folder? That'll tell me whether we need AI summarization or can just pull the docs as-is.
