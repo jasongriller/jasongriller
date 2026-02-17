@@ -110,3 +110,28 @@ Here are some ideas to get you started:
 
   That's what your QA means when they say they're moving away from basic feature-level test cases toward regression. They don't need "verify this field saves" — they need "trace this applicant through the entire     
   screening pipeline and make sure nothing is broken."
+
+
+
+
+ aws logs tail /aws/lambda/army-story-gen-dev-wiki-sync \                                                                                                                                                              
+    --since 1d --follow --profile govcloud --region us-gov-west-1                                                                                                                                                          
+                                                                                                                                                                                                                          You'll see output like:                                                                                                                                                                                               
+
+  Upload complete: 3 uploaded, 247 unchanged, 0 failed
+  Changes detected: 3 uploaded, 0 deleted — ingestion triggered
+
+
+  Or if nothing changed:
+
+  Upload complete: 0 uploaded, 250 unchanged, 0 failed
+  No changes detected (250 files unchanged) — skipping KB ingestion
+
+
+  If you want to see the full sync summary at the end:
+
+  aws logs filter-log-events \
+    --log-group-name /aws/lambda/army-story-gen-dev-wiki-sync \
+    --filter-pattern "Upload complete" \
+    --start-time $(date -d '7 days ago' +%s)000 \
+    --profile govcloud --region us-gov-west-1
