@@ -64,3 +64,19 @@ The Problem
 
   QA gets regression test cases generated in seconds instead of manually writing them from scratch. The test cases are grounded in our actual SF-86 field reference and AIE process documentation, so they're specific  
   and executable — not generic templates.
+
+  ● Progress! The IAM fix worked — Secrets Manager is fine now. But the git clone is getting 401 Unauthorized from ADO.                                                                                                                                                                                                                                     
+  The PAT stored in ado-repo-credentials doesn't have access to the AIE/_git/AIE code repo. You need to check:                                                               
+                                                                                                                                                                             
+  1. Is the PAT still valid? (not expired)                                                                                                                                     2. Does it have Code (Read) scope? — ADO PATs need explicit repo read permission                                                                                           
+  3. Does it have access to the AIE project/repo? — it might be scoped to specific repos
+
+  You can test the PAT from your deployment machine:
+
+  git ls-remote https://YOUR_USERNAME@dev.azure.com/gps-aie-devops/AIE/_git/AIE
+
+
+  It'll prompt for password — enter the PAT. If it returns refs, the PAT works. If 401, the PAT needs updating.
+
+  Once you have a valid PAT with code read access, update the secret in Secrets Manager (or re-run Terraform with TF_VAR_ado_repo_password="new-pat").
+
