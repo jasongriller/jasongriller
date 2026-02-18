@@ -15,7 +15,12 @@ Here are some ideas to get you started:
 - ⚡ Fun fact: ...
 -->
 
+  We have a new Lambda (repo-digest) that runs daily on a cron job. It hits the AIE code repo via ADO REST API, reads all the process-relevant files (docs, pipelines,       
+  release definitions, data dictionary, manifests, configs), then feeds them to Bedrock which condenses everything into a single markdown doc describing how the team        
+  operates — BA processes, QA workflows, CI/CD pipeline stages, release process, branching strategy, etc. That doc gets saved to S3 under our existing Curated KB section and
+   auto-triggers a KB ingestion so the AI always has up-to-date knowledge about team processes. It also skips regeneration if nothing in the repo has changed since last run.
 
+   
 
 It's all in the Bedrock prompt at lambdas/repo-digest/src/index.js:248-313. Here's how it works:                                                                                                                                                                                                                                                        
   Step 1 — Collect raw material (fetchRelevantFiles + getRecentCommits):                                                                                                       - Reads every .md, .yml, .yaml, .json, .txt, .xml, .csv file from these 6 folders: docs/, pipelines/, release-definitions/, data-dictionary/, manifest/, config/
