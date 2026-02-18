@@ -17,66 +17,36 @@ Here are some ideas to get you started:
 
 
 
-The Problem                                                                                                                                                                                                           
-                                                                                                                                                                                                                        
-  Our test case generator currently creates feature-level test cases — "does this one field save correctly?" type tests tied to individual user stories. QA has told us they're moving away from that. What they
-  actually need are regression test cases that trace an applicant record through the entire process: Screening → Processing → Enlistment → Sustainment → Shipping → Training → Graduation.
+It's all in the Bedrock prompt at lambdas/repo-digest/src/index.js:248-313. Here's how it works:                                                                                                                                                                                                                                                        
+  Step 1 — Collect raw material (fetchRelevantFiles + getRecentCommits):                                                                                                       - Reads every .md, .yml, .yaml, .json, .txt, .xml, .csv file from these 6 folders: docs/, pipelines/, release-definitions/, data-dictionary/, manifest/, config/
+  - Caps at 200K chars total (your run hit that limit at 67 files)                                                                                                           
+  - Also grabs the last 50 git commits (date, author, message)
 
-  What Regression Test Cases Look Like For Us
+  Step 2 — Build the prompt (buildUserPrompt, line 271):
+  - Dumps every file as a labeled code block:
+  ### /docs/some-file.md
+  - Appends the 50 commits as a markdown table
 
-  A regression test case takes one applicant (like "Dennis Tester") and walks them through the full pipeline:
+  Step 3 — System prompt tells the AI what to extract (line 248):
 
-  1. Personal Info — fill out name, DOB, contact info, passport, selective service
-  2. Screening — complete all screening types (Admin, Moral, Aptitude, Medical, Family & Associates) by filling out the SF-86 sections in Salesforce
-  3. Processing — MEPS scheduling, scheduled visits, result codes
-  4. Enlistment — contract signing, job reservation, DocuSign
-  5. Sustainment — DEP management, Future Soldier training
-  6. Shipping → Training → Graduation
+  The system prompt says: "You are an expert technical writer. You'll receive source files from the AIE team's repo. Generate a comprehensive markdown document describing   
+  how this team operates." Then it lists 7 specific sections to focus on:
 
-  At each stage, verify the data persists, the status updates, and any cross-system handoffs (MIRS, Keystone, DISS) happen correctly.
+  1. Release and Deployment Process
+  2. CI/CD Pipeline (stages, gates, automation)
+  3. Development Workflow (branching, PRs, code review)
+  4. QA Process (testing strategies, quality gates)
+  5. BA Process (requirements, story writing, AC conventions)
+  6. Data Model & Dictionary
+  7. Configuration & Environment
 
-  The whole point: if someone changes code in one area, does the entire pipeline still work?
+  Key instruction: "Do NOT include raw file contents — synthesize and summarize." So the AI reads pipeline YAML, release definitions, docs, data dictionaries, and distills  
+  them into human-readable prose with specific details (pipeline stage names, branch names, environment names, etc.). If a section has no relevant source files, it omits it 
+  rather than guessing.
 
-  Phased Rollout
+  Step 4 — Bedrock call (generateDigest, line 292):
+  - ConverseCommand with temperature: 0.3 (low creativity, factual), maxTokens: 8000
+  - Your run produced a 7,971 char digest from 199,741 chars of input — roughly a 25:1 compression ratio
 
-  Phase 1 (Now): Creation flows only — regression test cases that cover creating a new applicant record and walking it through the full pipeline from scratch. This is the highest-priority path and where QA needs     
-  coverage first.
-
-  Phase 2 (Later): Read, Update, Delete — add regression test cases for viewing existing records, modifying records mid-process, and deletion/cancellation flows (e.g., SV cancellations, opportunity closures, waiver  
-  withdrawals).
-
-  Why Our Tool Is the Right Place For This
-
-  - We already have the SF-86 form reference (all 29 sections, every field, every validation rule)
-  - We already have the AIE feature inventory documenting all E2E process flows
-  - We already export to Provar CSV format, which is what QA uses for automation
-  - QA's own PI8 roadmap lists GenAI as a tool they want to leverage for test case generation
-  - The infrastructure is built — we just need a new generation mode
-
-  What Changes
-
-  - Add a "Regression Test Case" option alongside the existing Test Case type
-  - Instead of pasting a user story, the user describes a process path (e.g., "Full enlistment pipeline" or "Moral screening E2E")
-  - Output is a multi-phase test case organized by lifecycle stage, not by individual acceptance criteria
-  - Same Provar/ADO CSV exports QA already uses
-
-  Impact
-
-  QA gets regression test cases generated in seconds instead of manually writing them from scratch. The test cases are grounded in our actual SF-86 field reference and AIE process documentation, so they're specific  
-  and executable — not generic templates.
-
-  ● Progress! The IAM fix worked — Secrets Manager is fine now. But the git clone is getting 401 Unauthorized from ADO.                                                                                                                                                                                                                                     
-  The PAT stored in ado-repo-credentials doesn't have access to the AIE/_git/AIE code repo. You need to check:                                                               
-                                                                                                                                                                             
-  1. Is the PAT still valid? (not expired)                                                                                                                                     2. Does it have Code (Read) scope? — ADO PATs need explicit repo read permission                                                                                           
-  3. Does it have access to the AIE project/repo? — it might be scoped to specific repos
-
-  You can test the PAT from your deployment machine:
-
-  git ls-remote https://YOUR_USERNAME@dev.azure.com/gps-aie-devops/AIE/_git/AIE
-
-
-  It'll prompt for password — enter the PAT. If it returns refs, the PAT works. If 401, the PAT needs updating.
-
-  Once you have a valid PAT with code read access, update the secret in Secrets Manager (or re-run Terraform with TF_VAR_ado_repo_password="new-pat").
-
+  So basically: dump all the process-relevant files into the AI's context window, tell it "synthesize this into a team processes doc", and it produces one clean markdown    
+  file that the KB can then use for RAG retrieval.
