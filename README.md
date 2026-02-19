@@ -15,43 +15,45 @@ Here are some ideas to get you started:
 - ⚡ Fun fact: ...
 -->
 
-  We have a new Lambda (repo-digest) that runs daily on a cron job. It hits the AIE code repo via ADO REST API, reads all the process-relevant files (docs, pipelines,       
-  release definitions, data dictionary, manifests, configs), then feeds them to Bedrock which condenses everything into a single markdown doc describing how the team        
-  operates — BA processes, QA workflows, CI/CD pipeline stages, release process, branching strategy, etc. That doc gets saved to S3 under our existing Curated KB section and
-   auto-triggers a KB ingestion so the AI always has up-to-date knowledge about team processes. It also skips regeneration if nothing in the repo has changed since last run.
+  The Bottom Line
 
-   
+  The Chat feature is basically a plain chatbot with light RAG — it finds some docs and talks. The Generator is a quality-engineered RAG pipeline with validation gates,     
+  reranking, structured prompts, and post-processing. The Chat should be leveraging the same retrieval intelligence and prompt engineering that makes the Generator output   
+  good.
 
-It's all in the Bedrock prompt at lambdas/repo-digest/src/index.js:248-313. Here's how it works:                                                                                                                                                                                                                                                        
-  Step 1 — Collect raw material (fetchRelevantFiles + getRecentCommits):                                                                                                       - Reads every .md, .yml, .yaml, .json, .txt, .xml, .csv file from these 6 folders: docs/, pipelines/, release-definitions/, data-dictionary/, manifest/, config/
-  - Caps at 200K chars total (your run hit that limit at 67 files)                                                                                                           
-  - Also grabs the last 50 git commits (date, author, message)
+  Want me to plan out how to bring the Chat up to parity? The main upgrades would be:
+  1. Multi-query retrieval with LLM reranking (Gate 2)
+  2. Richer system prompts with domain context and quality rules
+  3. Configurable thresholds from global settings
+  4. Over-fetch + filter pattern
+  5. Optional structured output mode when generating work items in chat
 
-  Step 2 — Build the prompt (buildUserPrompt, line 271):
-  - Dumps every file as a labeled code block:
-  ### /docs/some-file.md
-  - Appends the 50 commits as a markdown table
 
-  Step 3 — System prompt tells the AI what to extract (line 248):
 
-  The system prompt says: "You are an expert technical writer. You'll receive source files from the AIE team's repo. Generate a comprehensive markdown document describing   
-  how this team operates." Then it lists 7 specific sections to focus on:
 
-  1. Release and Deployment Process
-  2. CI/CD Pipeline (stages, gates, automation)
-  3. Development Workflow (branching, PRs, code review)
-  4. QA Process (testing strategies, quality gates)
-  5. BA Process (requirements, story writing, AC conventions)
-  6. Data Model & Dictionary
-  7. Configuration & Environment
+  Problem 1: Manual doc selection explicitly excludes wiki (Chat.tsx:99)
+  const kbDocs = docs.filter(doc => doc.source !== 'wiki');
+  Users literally cannot select wiki docs as context documents. This is the same in Home.tsx (line 130) — both UIs filter them out.
 
-  Key instruction: "Do NOT include raw file contents — synthesize and summarize." So the AI reads pipeline YAML, release definitions, docs, data dictionaries, and distills  
-  them into human-readable prose with specific details (pipeline stage names, branch names, environment names, etc.). If a section has no relevant source files, it omits it 
-  rather than guessing.
+  Problem 2: Semantic search CAN find wiki docs, but barely
+  The Chat's performSemanticSearch (line 502) queries the full Bedrock KB with no filterConfiguration — so wiki docs can appear in results if they score > 0.3. The backend  
+  even correctly labels them as sourceType: 'wiki' (line 523).
 
-  Step 4 — Bedrock call (generateDigest, line 292):
-  - ConverseCommand with temperature: 0.3 (low creativity, factual), maxTokens: 8000
-  - Your run produced a 7,971 char digest from 199,741 chars of input — roughly a 25:1 compression ratio
+  But:
+  - Only 10 results are fetched, top 5 returned
+  - No reranking — just raw vector similarity
+  - Single query using the raw user message (often vague/conversational)
+  - The 0.3 threshold is low but with only 10 slots, wiki docs compete with curated docs
 
-  So basically: dump all the process-relevant files into the AI's context window, tell it "synthesize this into a team processes doc", and it produces one clean markdown    
-  file that the KB can then use for RAG retrieval.
+  So wiki content can theoretically surface through semantic search, but it's a thin pipe — and it can never be intentionally loaded as reference context.
+
+  The Generator has the same Home.tsx filter (line 130), but compensates with:
+  - Over-fetch 2x (min 20 results) → more wiki docs can make it through
+  - LLM-based Gate 2 reranking → relevant wiki chunks survive
+  - Dynamic multi-query searches → domain keywords trigger targeted wiki hits
+  - The Agent Chat generates 4-8 specialized queries which can catch wiki content that a single search would miss
+
+  Bottom line
+
+  The Chat technically can surface wiki content via semantic search, but the odds are low because of the small fetch window and single-shot query. And users can never       
+  manually select wiki docs as context. The Generator overcomes this with its multi-query, over-fetch, and reranking pipeline.
