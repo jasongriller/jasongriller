@@ -15,16 +15,17 @@ Here are some ideas to get you started:
 - ⚡ Fun fact: ...
 -->
 
-We fixed the AI assistant so that when someone asks it to break down a feature, it actually asks useful questions about how to split the work up instead of asking generic questions about Salesforce fields and data models.
-                                                                                                                                                                             
-Before, it was basically following a generic checklist. Now it focuses on what matters — what are the pieces, what order do they go in, and what already exists. 
+Infra Note (Terraform / ADO Setup)
 
-Before it was cycling through this:  
+terraform.tfvars is local and gitignored, so it won’t exist when cloning.
 
-1. Purpose                                                                                                                                                                  
-2. Location in Salesforce
-3. User Roles                                                                                                                                                              
-4. Data Model   
-5. Workflow
-6. Business Rules
-7. UI Components
+Have him create:
+
+terraform/terraform.tfvars
+
+With:
+
+ado_password      = "<Salman's PAT>"
+ado_repo_password = "<Jason's PAT>"
+
+Or set the environment variables before deploying.
