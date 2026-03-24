@@ -15,6 +15,8 @@ Here are some ideas to get you started:
 - ⚡ Fun fact: ...
 -->
 
+https://teams.microsoft.com/meet/33123720015122?p=2YhFCjuMMw8UxLzkqI
+
 
 Sprint Notes Generator — Analytics Tracking Proposal
 AI Team · Prepared March 2025 · Internal Use Only
