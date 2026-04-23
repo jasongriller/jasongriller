@@ -21,3 +21,5 @@ Here are some ideas to get you started:
   Two sanity checks first if that errors again:
   aws configure list-profiles
   aws sts get-caller-identity --profile govcloud --region us-gov-west-1
+
+  AWS_PROFILE=govcloud MSYS_NO_PATHCONV=1 aws logs tail /aws/lambda/army-story-gen-dev-stories --since 1h --region            us-gov-west-1 --format short | head -40     
