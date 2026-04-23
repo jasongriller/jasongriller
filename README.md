@@ -24,3 +24,4 @@ Here are some ideas to get you started:
   pre-deploy, runtime v106) worked fine. Post-deploy (18:32, runtime v112), every single one errors out at init because uuid
    is missing from the published layer.
 
+  arn:aws-us-gov:lambda:us-gov-west-1:456072988267:layer:army-story-gen-dev-shared-layer:17
