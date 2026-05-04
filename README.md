@@ -16,17 +16,6 @@ Here are some ideas to get you started:
 -->
 
 
+Problem: Exec Summary Save & Archive / Past Editions were failing because the Lambda role didn’t have S3 permissions for the exec-summaries/ prefix, so S3 returned AccessDenied and the UI showed a 500.
 
-**Task Structure by Work Item Type**
-
-Spikes should have 2 tasks: **Research** and **Documentation**.
-
-Bugs, Tech Enablers, and Stories should have the same 3 tasks: **Development**, **Deployment/Unit Testing**, and **Testing**.
-
-**Activity Mapping**
-
-Research Task = Design
-Documentation Task = Documentation
-Development Task = Development
-Deployment Task = Deployment
-Testing Task = Testing
+Fix: Added least-privilege Terraform IAM updates so the Lambda can ListBucket, GetObject, and PutObject only under exec-summaries/; plan confirms it’s a single in-place IAM policy update with no redeploy needed.
