@@ -15,7 +15,20 @@ Here are some ideas to get you started:
 - ⚡ Fun fact: ...
 -->
 
+1. What I’m seeing in ADO
 
-Problem: Exec Summary Save & Archive / Past Editions were failing because the Lambda role didn’t have S3 permissions for the exec-summaries/ prefix, so S3 returned AccessDenied and the UI showed a 500.
+Spikes are usually short, descriptive research cards. The title names the thing being investigated, and the description frames the problem or research goal in a few sentences.
 
-Fix: Added least-privilege Terraform IAM updates so the Lambda can ListBucket, GetObject, and PutObject only under exec-summaries/; plan confirms it’s a single in-place IAM policy update with no redeploy needed.
+Formal AC is almost never used. Story points are used about half the time, with 3 SP being the most common when they are used.
+
+2. What’s already working
+
+Our Spike doc is roughly 80% aligned with the real pattern.
+
+Push-to-ADO is also already creating the correct child tasks for spikes: Research and Documentation. So that part looks good from the updates we made last week.
+
+3. What I think we should update
+
+The fix should be pretty contained: soften two sentences in the current Spike doc, add guidance around story points, add a clear “no AC” note, and create one new Spike template file.
+
+Once those land, the AI’s spike output should line up much better with what the team is already producing by hand.
