@@ -14,3 +14,10 @@ Here are some ideas to get you started:
 - 😄 Pronouns: ...
 - ⚡ Fun fact: ...
 -->
+
+module.static_website.null_resource.build_and_sync_frontend (local-exec): copy: s3://decomposerai/index.html to s3://decomposerai/utilities/gamification
+module.static_website.null_resource.build_and_sync_frontend: Creation complete after 1m38s [id=735259317]
+module.static_website.aws_s3_bucket.website (deposed object a96fa702): Destroying... [id=army-story-gen-dev-frontend]
+╷
+│ Error: deleting S3 Bucket (army-story-gen-dev-frontend): operation error S3: DeleteBucket, https response error StatusCode: 409, RequestID: HHX44HV6QARZQVZV, HostID: 1ufu8SS5gNnusoFJBzDK0MvvWcTeL818I4AhSjJfKesQx19FQzqYz7Twj14pK9iN4ZieohIVU64=, api error BucketNotEmpty: The bucket you tried to delete is not empty
+│ 
